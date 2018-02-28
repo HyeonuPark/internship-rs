@@ -3,4 +3,13 @@ name = "internship"
 version = "0.1.0"
 authors = ["Hyeonu Park <nemo1275@gmail.com>"]
 
+description = "Interned string and more"
+homepage = "https://github.com/HyeonuPark/Internship-rs"
+documentation = "https://docs.rs/internship"
+repository = "https://github.com/HyeonuPark/Internship-rs.git"
+keywords = ["interned string", "string pool"]
+categories = ["rust-patterns"]
+readme = "README.md"
+license = "MIT/Apache-2.0"
+
 [dependencies]
