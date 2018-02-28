@@ -25,29 +25,31 @@ but guaranteed uniqueness over value and thread.
 # Example
 
 1. Interning string
-```
-extern crate internship;
-use internship::Intern;
 
-let foo = Intern::new("foo"); // type is Intern<str>
-let foo2 = Intern::new("foo"); // reuse foo's buffer
+  ```
+  extern crate internship;
+  use internship::Intern;
 
-let mut map = HashMap::new();
-map.insert(Intern::new("key"), 42);
-assert_eq!(map.get(&Intern::new("key")), Some(&42));
-```
+  let foo = Intern::new("foo"); // type is Intern<str>
+  let foo2 = Intern::new("foo"); // reuse foo's buffer
+
+  let mut map = HashMap::new();
+  map.insert(Intern::new("key"), 42);
+  assert_eq!(map.get(&Intern::new("key")), Some(&42));
+  ```
 
 1. Interning custom type
-```
-#[macro_use]
-extern crate internship;
-use internship::Intern;
 
-struct CustomData(u32, bool);
-intern!(CustomData); // this is all you need to interning
+  ```
+  #[macro_use]
+  extern crate internship;
+  use internship::Intern;
 
-let my_data = Intern::new(&CustomData(3, true))
-```
+  struct CustomData(u32, bool);
+  intern!(CustomData); // this is all you need to interning
+
+  let my_data = Intern::new(&CustomData(3, true))
+  ```
 
 # How is `Intern<T>` better then `Rc<T>`?
 

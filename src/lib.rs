@@ -23,37 +23,37 @@
 //!
 //! 1. Interning string
 //!
-//! ```
-//! extern crate internship;
-//! use internship::Intern;
-//! # use std::collections::HashMap;
+//!   ```
+//!   extern crate internship;
+//!   use internship::Intern;
+//!   # use std::collections::HashMap;
 //!
-//! # fn main() {
-//! let foo = Intern::new("foo"); // type is Intern<str>
-//! let foo2 = Intern::new("foo"); // reuse foo's buffer
+//!   # fn main() {
+//!   let foo = Intern::new("foo"); // type is Intern<str>
+//!   let foo2 = Intern::new("foo"); // reuse foo's buffer
 //!
-//! let mut map = HashMap::new();
-//! map.insert(Intern::new("key"), 42);
-//! assert_eq!(map.get(&Intern::new("key")), Some(&42));
-//! # }
-//! ```
+//!   let mut map = HashMap::new();
+//!   map.insert(Intern::new("key"), 42);
+//!   assert_eq!(map.get(&Intern::new("key")), Some(&42));
+//!   # }
+//!   ```
 //!
 //! 1. Interning custom type
 //!
-//! ```
-//! #[macro_use]
-//! extern crate internship;
-//! use internship::Intern;
+//!   ```
+//!   #[macro_use]
+//!   extern crate internship;
+//!   use internship::Intern;
 //!
-//! #[derive(Clone, Hash, PartialEq, Eq)] // required
-//! struct CustomData(u32, bool);
+//!   #[derive(Clone, Hash, PartialEq, Eq)] // required
+//!   struct CustomData(u32, bool);
 //!
-//! intern!(CustomData); // now it's ready for interning
+//!   intern!(CustomData); // now it's ready for interning
 //!
-//! # fn main() {
-//! let my_data = Intern::new(&CustomData(3, true));
-//! # }
-//! ```
+//!   # fn main() {
+//!   let my_data = Intern::new(&CustomData(3, true));
+//!   # }
+//!   ```
 //!
 //! # How is `Intern<T>` better then `Rc<T>`?
 //!
