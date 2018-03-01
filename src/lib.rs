@@ -95,6 +95,7 @@ use std::collections::HashSet;
 use std::borrow::Borrow;
 use std::thread::LocalKey;
 use std::ops::{Deref, Drop};
+use std::fmt;
 
 #[cfg(feature = "shared_from_slice2")]
 use std::ffi::{CStr, OsStr};
@@ -134,7 +135,7 @@ pub type InternPath = Intern<Path>;
 ///   Again, as only single copy of unique value can be exists,
 ///   its allocated memory address can represent underlying value.
 ///   So you can perform blazingly-fast hashmap lookup for string keys.
-#[derive(Debug, Clone, Eq)]
+#[derive(Debug, Clone, Eq, PartialOrd, Ord, Default)]
 pub struct Intern<T>(Rc<T>) where T: InternContent + ?Sized;
 
 /// Intern-able data
@@ -220,6 +221,18 @@ impl<T> Hash for Intern<T> where T: InternContent + ?Sized {
         let ptr = Rc::into_raw(Rc::clone(&self.0));
         unsafe { Rc::from_raw(ptr) };
         ptr.hash(hasher)
+    }
+}
+
+impl<T> AsRef<T> for Intern<T> where T: InternContent + ?Sized {
+    fn as_ref(&self) -> &T {
+        &*self.0
+    }
+}
+
+impl<T> fmt::Display for Intern<T> where T: InternContent + ?Sized + fmt::Display {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.as_ref().fmt(f)
     }
 }
 
