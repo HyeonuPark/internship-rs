@@ -129,7 +129,7 @@ pub type InternPath = Intern<Path>;
 ///   its allocated memory address can represent underlying value.
 ///   So you can perform blazingly-fast hashmap lookup for string keys.
 #[derive(Debug, Clone, Eq)]
-pub struct Intern<T: InternContent + ?Sized>(Rc<T>);
+pub struct Intern<T>(Rc<T>) where T: InternContent + ?Sized;
 
 /// Intern-able data
 ///
@@ -170,7 +170,7 @@ impl<'a, T> Intern<T> where T: InternContent + ?Sized, &'a T: Into<Rc<T>> {
     }
 }
 
-impl<T: InternContent> From<T> for Intern<T> {
+impl<T> From<T> for Intern<T> where T: InternContent {
     fn from(content: T) -> Self {
         unsafe {
             T::provide_interned_pool().with(|pool| {
@@ -196,7 +196,7 @@ impl<'a, T> From<&'a T> for Intern<T> where T: InternContent + ?Sized, &'a T: In
     }
 }
 
-impl<T: InternContent + ?Sized> Deref for Intern<T> {
+impl<T> Deref for Intern<T> where T: InternContent + ?Sized {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -204,7 +204,7 @@ impl<T: InternContent + ?Sized> Deref for Intern<T> {
     }
 }
 
-impl<T: InternContent + ?Sized> Drop for Intern<T> {
+impl<T> Drop for Intern<T> where T: InternContent + ?Sized {
     fn drop(&mut self) {
         // strong count == 2 means
         // no other copies of this interned value exist
@@ -220,13 +220,13 @@ impl<T: InternContent + ?Sized> Drop for Intern<T> {
     }
 }
 
-impl<T: InternContent + ?Sized> PartialEq<Self> for Intern<T> {
+impl<T> PartialEq<Self> for Intern<T> where T: InternContent + ?Sized {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
-impl<T: InternContent + ?Sized> Hash for Intern<T> {
+impl<T> Hash for Intern<T> where T: InternContent + ?Sized {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         let ptr = Rc::into_raw(Rc::clone(&self.0));
         unsafe { Rc::from_raw(ptr) };
