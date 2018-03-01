@@ -51,7 +51,7 @@
 //!   intern!(CustomData); // now it's ready for interning
 //!
 //!   # fn main() {
-//!   let my_data = Intern::new(&CustomData(3, true));
+//!   let my_data = Intern::from(CustomData(3, true));
 //!   # }
 //!   ```
 //!
@@ -108,9 +108,6 @@ pub type InternPath = Intern<Path>;
 ///
 /// `Intern<T>` is conceptually same as `Rc<T>` but unique per value per thread.
 ///
-/// `Intern<T>` does not implement `Send`
-/// so use `Intern::to_box()` method to pass it's value between threads.
-///
 /// # Advantages
 ///
 /// `Intern<T>` has some advantages over `Rc<T>` that..
@@ -137,7 +134,7 @@ pub struct Intern<T: InternContent + ?Sized>(Rc<T>);
 /// Intern-able data
 ///
 /// Generally, use provided `intern!` macro instead to allow your type to be interned.
-pub unsafe trait InternContent: Eq + Hash + Alloc + 'static {
+pub unsafe trait InternContent: Eq + Hash + 'static {
     /// Provide thread-local interned pool for this type.
     ///
     /// This is necessary as Rust doesn't allow static variables with generic type,
@@ -148,21 +145,13 @@ pub unsafe trait InternContent: Eq + Hash + Alloc + 'static {
     unsafe fn provide_interned_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>>;
 }
 
-/// Simple abstraction over clonable data and slices.
-///
-/// This trait is already implemented for `T: Clone` and most slice types.
-pub trait Alloc {
-    fn to_rc(&self) -> Rc<Self>;
-    fn to_box(&self) -> Box<Self>;
-}
-
-impl<T: InternContent + ?Sized> Intern<T>{
-    /// Create new `Intern`, if cached data not found.
+impl<'a, T> Intern<T> where T: InternContent + ?Sized, &'a T: Into<Rc<T>> {
+    /// Create new `Intern` from `str` like type, if cached data not found.
     ///
     /// This function always perform thread-local hashmap lookup.
     /// So `Intern::clone()` is still more efficient then
     /// repeated `Intern::new()` with same data.
-    pub fn new(content: &T) -> Self {
+    pub fn new(content: &'a T) -> Self {
         unsafe {
             T::provide_interned_pool().with(|pool| {
                 let mut pool = pool.borrow_mut();
@@ -171,7 +160,7 @@ impl<T: InternContent + ?Sized> Intern<T>{
                 match cached {
                     Some(value) => Intern(value),
                     None => {
-                        let value = content.to_rc();
+                        let value = content.into();
                         pool.insert(Rc::clone(&value));
                         Intern(value)
                     }
@@ -179,10 +168,31 @@ impl<T: InternContent + ?Sized> Intern<T>{
             })
         }
     }
+}
 
-    /// Clone inner data to box.
-    pub fn to_box(this: &Self) -> Box<T> {
-        (*this.0).to_box()
+impl<T: InternContent> From<T> for Intern<T> {
+    fn from(content: T) -> Self {
+        unsafe {
+            T::provide_interned_pool().with(|pool| {
+                let mut pool = pool.borrow_mut();
+                let cached = pool.get(&content).cloned();
+
+                match cached {
+                    Some(value) => Intern(value),
+                    None => {
+                        let value = Rc::new(content);
+                        pool.insert(Rc::clone(&value));
+                        Intern(value)
+                    }
+                }
+            })
+        }
+    }
+}
+
+impl<'a, T> From<&'a T> for Intern<T> where T: InternContent + ?Sized, &'a T: Into<Rc<T>> {
+    fn from(data: &'a T) -> Self {
+        Intern::new(data)
     }
 }
 
@@ -207,12 +217,6 @@ impl<T: InternContent + ?Sized> Drop for Intern<T> {
                 });
             }
         }
-    }
-}
-
-impl<'a, T: InternContent + ?Sized> From<&'a T> for Intern<T> {
-    fn from(data: &T) -> Self {
-        Intern::new(data)
     }
 }
 
@@ -247,7 +251,7 @@ impl<T: InternContent + ?Sized> Hash for Intern<T> {
 ///
 /// // Now you can use `Intern<CustomData>`
 /// # fn main() {
-/// let _ = Intern::new(&CustomData(3, true));
+/// let _ = Intern::from(CustomData(3, true));
 /// # }
 /// ```
 #[macro_export]
@@ -279,47 +283,12 @@ macro_rules! intern {
     );
 }
 
-// Implement `ToRc` for common DSTs
+intern!{str}
+intern!{[u8]}
+intern!{CStr}
+intern!{OsStr}
+intern!{Path}
 
-macro_rules! impl_str_likes {
-    ($($T:ty),*) => ($(
-        impl Alloc for $T {
-            fn to_rc(&self) -> Rc<Self> {
-                self.into()
-            }
-
-            fn to_box(&self) -> Box<Self> {
-                self.into()
-            }
-        }
-
-        intern!($T);
-    )*);
-}
-
-impl_str_likes!{str, CStr, OsStr, Path}
-
-impl<T: Clone> Alloc for T {
-    fn to_rc(&self) -> Rc<Self> {
-        Rc::new(self.clone())
-    }
-
-    fn to_box(&self) -> Box<Self> {
-        Box::new(self.clone())
-    }
-}
-
-impl<T: Copy> Alloc for [T] {
-    fn to_rc(&self) -> Rc<Self> {
-        self.into()
-    }
-
-    fn to_box(&self) -> Box<Self> {
-        self.into()
-    }
-}
-
-intern!([u8]);
 
 #[cfg(test)]
 mod tests {
@@ -345,7 +314,7 @@ mod tests {
         };
 
         assert_eq!(pool_size(), 0);
-        let d1 = Intern::<Dummy>::new(&Dummy(7));
+        let d1 = Intern::<Dummy>::from(Dummy(7));
         assert_eq!(pool_size(), 1);
         drop(d1);
         assert_eq!(pool_size(), 0);
