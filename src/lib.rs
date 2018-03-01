@@ -16,7 +16,7 @@
 //!
 //! # What does this library provide?
 //!
-//! The core of `Internship` is `struct Intern<T>`. You can think of it as `Rc<T>`,
+//! The core of the API is `Intern<T>`. You can think of it as `Rc<T>`,
 //! but guaranteed uniqueness over value and thread.
 //!
 //! # Example
@@ -24,17 +24,17 @@
 //! 1. Interning string
 //!
 //!   ```
-//!   extern crate internship;
-//!   use internship::Intern;
+//!   # extern crate internship;
 //!   # use std::collections::HashMap;
+//!   use internship::Intern;
 //!
 //!   # fn main() {
-//!   let foo = Intern::new("foo"); // type is Intern<str>
-//!   let foo2 = Intern::new("foo"); // reuse foo's buffer
+//!   let foo = intern("foo"); // type is Intern<str>
+//!   let foo2 = intern("foo"); // reuse foo's buffer
 //!
 //!   let mut map = HashMap::new();
-//!   map.insert(Intern::new("key"), 42);
-//!   assert_eq!(map.get(&Intern::new("key")), Some(&42));
+//!   map.insert(intern("key"), 42);
+//!   assert_eq!(map.get(&intern("key")), Some(&42));
 //!   # }
 //!   ```
 //!
@@ -48,10 +48,10 @@
 //!   #[derive(Clone, Hash, PartialEq, Eq)] // required
 //!   struct CustomData(u32, bool);
 //!
-//!   intern!(CustomData); // now it's ready for interning
+//!   allow_intern!(CustomData); // now it's ready for interning
 //!
 //!   # fn main() {
-//!   let my_data = Intern::from(CustomData(3, true));
+//!   let my_data = intern(CustomData(3, true));
 //!   # }
 //!   ```
 //!
@@ -62,7 +62,7 @@
 //! 1. Space efficient
 //!
 //!   As only single allocation is happen per unique value,
-//!   you can even span `Intern::new()` without worrying about memory bloat.
+//!   you can even span `intern()` without worrying about memory bloat.
 //!
 //! 1. Cheap equality check
 //!
@@ -73,20 +73,26 @@
 //! 1. Cheap hash calculation
 //!
 //!   Again, as only one copy of unique value can be exist,
-//!   its allocated memory address can represent underlying value.
-//!   So you can perform blazingly-fast hashmap lookup with string value.
+//!   its allocated memory address can represent underlying value
+//!   so calculating hash over its pointer makes sense to hash `Intern<T>`.
+//!   Now you can perform blazingly-fast hashmap lookup with arbitrary string key.
 //!
 //! # What primitive types can be interned?
 //!
 //! Currently these types below are supported.
 //!
 //! - `str`
+//! - `[u8]`
 //! - `CStr`
 //! - `OsStr`
 //! - `Path`
-//! - `[u8]`
 //!
 //! You can find interned type of them as re-export, like `InternStr`.
+//!
+//! > For now, only `str` and `[u8]` are interned by default.
+//! > This limitation should be removed after docs.rs update their rustc.
+//! > If you want to use others at now, turn on cargo feature "shared_from_slice2".
+//!
 
 use std::rc::Rc;
 use std::hash::{Hash, Hasher};
@@ -103,7 +109,7 @@ use std::ffi::{CStr, OsStr};
 use std::path::Path;
 
 pub type InternStr = Intern<str>;
-pub type InternByteStr = Intern<[u8]>;
+pub type InternBytes = Intern<[u8]>;
 #[cfg(feature = "shared_from_slice2")]
 pub type InternCStr = Intern<CStr>;
 #[cfg(feature = "shared_from_slice2")]
@@ -113,35 +119,17 @@ pub type InternPath = Intern<Path>;
 
 /// Interned data
 ///
-/// `Intern<T>` is conceptually same as `Rc<T>` but unique per value per thread.
+/// `Intern<T>` is conceptually same as `Rc<T>` but unique over its value within thread.
 ///
-/// # Advantages
-///
-/// `Intern<T>` has some advantages over `Rc<T>` that..
-///
-/// 1. Space efficient
-///
-///   As only single allocation is happen per unique value,
-///   you can span `Intern::new()` without worring memory bloat.
-///
-/// 1. Cheap equality check
-///
-///   As only single copy of unique value can be exists,
-///   comparing two `Intern`s is done with just single pointer-comparison
-///   instead comparing all bytes of strings.
-///
-/// 1. Cheap hash calculation
-///
-///   Again, as only single copy of unique value can be exists,
-///   its allocated memory address can represent underlying value.
-///   So you can perform blazingly-fast hashmap lookup for string keys.
 #[derive(Debug, Clone, Eq, PartialOrd, Ord, Default)]
-pub struct Intern<T>(Rc<T>) where T: InternContent + ?Sized;
+pub struct Intern<T>(Rc<T>) where T: AllowToIntern + ?Sized;
 
-/// Intern-able data
+/// Marker for intern-able type
 ///
-/// Generally, use provided `intern!` macro instead to allow your type to be interned.
-pub unsafe trait InternContent: Eq + Hash + 'static {
+/// Generally, use `allow_intern!()` macro instead to allow your type to be interned.
+///
+pub unsafe trait AllowToIntern: Eq + Hash + 'static {
+
     /// Provide thread-local interned pool for this type.
     ///
     /// This is necessary as Rust doesn't allow static variables with generic type,
@@ -149,15 +137,15 @@ pub unsafe trait InternContent: Eq + Hash + 'static {
     ///
     /// Calling this function is `unsafe` because `Intern` relies on assumption that
     /// provided pool never change except for the construction/destruction of the `Intern`.
+    ///
     unsafe fn provide_interned_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>>;
 }
 
-impl<'a, T> Intern<T> where T: InternContent + ?Sized {
-    /// Create new `Intern`, if cached data not found.
+impl<'a, T> Intern<T> where T: AllowToIntern + ?Sized {
+
+    /// Create new `Intern<T>` which has same content with given argument.
+    /// given `content` can be dropped if intern with same value already exist.
     ///
-    /// This function always perform thread-local hashmap lookup.
-    /// So `Intern::clone()` is still more efficient then
-    /// repeated `Intern::new()` with same data.
     pub fn new<U>(content: U) -> Self where U: Into<Rc<T>> + Borrow<T> {
         unsafe {
             T::provide_interned_pool().with(|pool| {
@@ -177,8 +165,20 @@ impl<'a, T> Intern<T> where T: InternContent + ?Sized {
     }
 }
 
+/// Create new `Intern<T>` which has same content with given argument.
+/// given `content` can be dropped if intern with same value already exist.
+///
+/// This function is a thin wrapper over `Intern::new()` for convenience.
+///
+pub fn intern<T, U>(content: U) -> Intern<T> where
+    T: AllowToIntern + ?Sized,
+    U: Into<Rc<T>> + Borrow<T>,
+{
+    Intern::<T>::new(content)
+}
+
 impl<T, U> From<U> for Intern<T> where
-    T: InternContent + ?Sized,
+    T: AllowToIntern + ?Sized,
     U: Into<Rc<T>> + Borrow<T>,
 {
     fn from(content: U) -> Self {
@@ -186,7 +186,7 @@ impl<T, U> From<U> for Intern<T> where
     }
 }
 
-impl<T> Deref for Intern<T> where T: InternContent + ?Sized {
+impl<T> Deref for Intern<T> where T: AllowToIntern + ?Sized {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -194,12 +194,12 @@ impl<T> Deref for Intern<T> where T: InternContent + ?Sized {
     }
 }
 
-impl<T> Drop for Intern<T> where T: InternContent + ?Sized {
+impl<T> Drop for Intern<T> where T: AllowToIntern + ?Sized {
     fn drop(&mut self) {
-        // strong count == 2 means
-        // no other copies of this interned value exist
-        // other then the `self` which will be dropped
-        // and the one in the pool.
+        // strong count == 2 means no other copies of this interned value exist
+        // other then the `self` which will be dropped and the one in the pool,
+        // so it's not really being used.
+        //
         if Rc::strong_count(&self.0) == 2 {
             unsafe {
                 T::provide_interned_pool().with(|pool| {
@@ -210,13 +210,13 @@ impl<T> Drop for Intern<T> where T: InternContent + ?Sized {
     }
 }
 
-impl<T> PartialEq<Self> for Intern<T> where T: InternContent + ?Sized {
+impl<T> PartialEq<Self> for Intern<T> where T: AllowToIntern + ?Sized {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
-impl<T> Hash for Intern<T> where T: InternContent + ?Sized {
+impl<T> Hash for Intern<T> where T: AllowToIntern + ?Sized {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         let ptr = Rc::into_raw(Rc::clone(&self.0));
         unsafe { Rc::from_raw(ptr) };
@@ -224,19 +224,19 @@ impl<T> Hash for Intern<T> where T: InternContent + ?Sized {
     }
 }
 
-impl<T> AsRef<T> for Intern<T> where T: InternContent + ?Sized {
+impl<T> AsRef<T> for Intern<T> where T: AllowToIntern + ?Sized {
     fn as_ref(&self) -> &T {
         &*self.0
     }
 }
 
-impl<T> fmt::Display for Intern<T> where T: InternContent + ?Sized + fmt::Display {
+impl<T> fmt::Display for Intern<T> where T: AllowToIntern + ?Sized + fmt::Display {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         self.as_ref().fmt(f)
     }
 }
 
-/// Provide a interned pool so your custom data can be interned.
+/// Provide a interned pool so your custom type can be interned.
 ///
 /// # Example
 ///
@@ -244,22 +244,22 @@ impl<T> fmt::Display for Intern<T> where T: InternContent + ?Sized + fmt::Displa
 /// #[macro_use]
 /// extern crate internship;
 ///
-/// use internship::Intern;
+/// use internship::intern;
 ///
-/// #[derive(Clone, Hash, PartialEq, Eq)]
+/// #[derive(Clone, Hash, PartialEq, Eq)] // required
 /// struct CustomData(u32, bool);
 ///
-/// intern!(CustomData);
+/// allow_intern!(CustomData);
 ///
 /// // Now you can use `Intern<CustomData>`
 /// # fn main() {
-/// let _ = Intern::from(CustomData(3, true));
+/// let _ = intern(CustomData(3, true));
 /// # }
 /// ```
 #[macro_export]
-macro_rules! intern {
+macro_rules! allow_intern {
     ($T:ty) => (
-        unsafe impl $crate::InternContent for $T {
+        unsafe impl $crate::AllowToIntern for $T {
             unsafe fn provide_interned_pool() ->
                 &'static ::std::thread::LocalKey<
                         ::std::cell::RefCell<
@@ -285,16 +285,17 @@ macro_rules! intern {
     );
 }
 
-intern!{str}
-intern!{[u8]}
-#[cfg(feature = "shared_from_slice2")]
-intern!{CStr}
-#[cfg(feature = "shared_from_slice2")]
-intern!{OsStr}
-#[cfg(feature = "shared_from_slice2")]
-intern!{Path}
+allow_intern!{str}
+allow_intern!{[u8]}
 
-#[cfg(feature = "serde-support")]
+#[cfg(feature = "shared_from_slice2")]
+allow_intern!{CStr}
+#[cfg(feature = "shared_from_slice2")]
+allow_intern!{OsStr}
+#[cfg(feature = "shared_from_slice2")]
+allow_intern!{Path}
+
+#[cfg(feature = "serde-compat")]
 mod serde_support;
 
 #[cfg(test)]
@@ -303,14 +304,14 @@ mod tests {
 
     #[test]
     fn test_eq_check() {
-        assert_eq!(InternStr::new("foo"), InternStr::new("foo"));
-        assert_eq!(&*InternStr::new("bar"), "bar");
+        assert_eq!(intern("foo"), Intern::new("foo"));
+        assert_eq!(&*Intern::new("bar"), "bar");
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     struct Dummy(usize);
 
-    intern!(Dummy);
+    allow_intern!(Dummy);
 
     #[test]
     fn test_remove_cache_on_destruct() {
@@ -321,7 +322,7 @@ mod tests {
         };
 
         assert_eq!(pool_size(), 0);
-        let d1 = Intern::<Dummy>::from(Dummy(7));
+        let d1 = Intern::new(Dummy(7));
         assert_eq!(pool_size(), 1);
         drop(d1);
         assert_eq!(pool_size(), 0);

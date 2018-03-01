@@ -13,8 +13,8 @@ readme = "README.md"
 license = "MIT/Apache-2.0"
 
 [features]
-default = ["serde-support"]
-serde-support = ["serde"]
+default = ["serde-compat"]
+serde-compat = ["serde"]
 shared_from_slice2 = []
 
 [dependencies.serde]
