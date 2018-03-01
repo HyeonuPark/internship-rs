@@ -95,13 +95,18 @@ use std::collections::HashSet;
 use std::thread::LocalKey;
 use std::ops::{Deref, Drop};
 
+#[cfg(feature = "shared_from_slice2")]
 use std::ffi::{CStr, OsStr};
+#[cfg(feature = "shared_from_slice2")]
 use std::path::Path;
 
 pub type InternStr = Intern<str>;
 pub type InternByteStr = Intern<[u8]>;
+#[cfg(feature = "shared_from_slice2")]
 pub type InternCStr = Intern<CStr>;
+#[cfg(feature = "shared_from_slice2")]
 pub type InternOsStr = Intern<OsStr>;
+#[cfg(feature = "shared_from_slice2")]
 pub type InternPath = Intern<Path>;
 
 /// Interned data
@@ -285,8 +290,11 @@ macro_rules! intern {
 
 intern!{str}
 intern!{[u8]}
+#[cfg(feature = "shared_from_slice2")]
 intern!{CStr}
+#[cfg(feature = "shared_from_slice2")]
 intern!{OsStr}
+#[cfg(feature = "shared_from_slice2")]
 intern!{Path}
 
 
