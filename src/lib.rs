@@ -95,7 +95,7 @@ pub use self::shared_from_slice2::*;
 ///
 /// `Intern<T>` is conceptually same as `Rc<T>` but unique over its value within thread.
 ///
-#[derive(Debug, Clone, Eq, PartialOrd, Ord, Default)]
+#[derive(Debug, Eq, PartialOrd, Ord, Default)]
 pub struct Intern<T>(Rc<T>) where T: AllowIntern + ?Sized;
 
 mod private {
@@ -172,6 +172,12 @@ impl<T, U> From<U> for Intern<T> where
 {
     fn from(value: U) -> Self {
         Intern::new_impl(value)
+    }
+}
+
+impl<T> Clone for Intern<T> where T: AllowIntern + ?Sized {
+    fn clone(&self) -> Self {
+        Intern(self.0.clone())
     }
 }
 
@@ -297,9 +303,12 @@ mod tests {
         let b3 = intern(&b"foo"[..]);
         assert_eq!(pool_size(), 2);
         assert_eq!(Rc::strong_count(&b1.0), 3);
+        let b4 = Intern::clone(&b3);
+        assert_eq!(Rc::strong_count(&b1.0), 4);
         drop(b2);
         assert_eq!(pool_size(), 1);
         drop(b1);
+        drop(b4);
         assert_eq!(pool_size(), 1);
         assert_eq!(Rc::strong_count(&b3.0), 2);
         drop(b3);
