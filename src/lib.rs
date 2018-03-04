@@ -122,7 +122,18 @@ impl<T> Intern<T> where T: AllowIntern + ?Sized, for<'a> &'a T: Into<Rc<T>> {
 
     /// Create new `Intern<T>` from given value, if matching cache is not found.
     ///
+    #[inline]
     pub fn new(value: &T) -> Self {
+        Intern::new_impl(value)
+    }
+
+    /// Create new `Intern<T>` from given value, reuse `Rc<T>` if possible.
+    #[inline]
+    pub fn from_rc(value: Rc<T>) -> Self {
+        Intern::new_impl(value)
+    }
+
+    fn new_impl<U: Into<Rc<T>> + Borrow<T>>(value: U) -> Self {
         let pool = unsafe {
             T::provide_per_thread_intern_pool()
         };
@@ -154,12 +165,13 @@ pub fn intern<T>(value: &T) -> Intern<T> where
     Intern::new(value)
 }
 
-impl<'a, T> From<&'a T> for Intern<T> where
+impl<T, U> From<U> for Intern<T> where
     T: AllowIntern + ?Sized,
-    for<'b> &'b T: Into<Rc<T>>
+    for<'a> &'a T: Into<Rc<T>>,
+    U: Into<Rc<T>> + Borrow<T>,
 {
-    fn from(value: &T) -> Self {
-        Intern::new(value)
+    fn from(value: U) -> Self {
+        Intern::new_impl(value)
     }
 }
 
@@ -243,6 +255,9 @@ mod shared_from_slice2 {
     pub type InternOsStr = Intern<OsStr>;
     pub type InternPath = Intern<Path>;
 }
+
+// more trait impl for `Intern<str>`
+mod string;
 
 #[cfg(feature = "serde-compat")]
 mod serde_support;
