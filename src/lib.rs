@@ -86,19 +86,10 @@ use std::thread::LocalKey;
 use std::ops::{Deref, Drop};
 use std::fmt;
 
-#[cfg(feature = "shared_from_slice2")]
-use std::ffi::{CStr, OsStr};
-#[cfg(feature = "shared_from_slice2")]
-use std::path::Path;
-
 pub type InternStr = Intern<str>;
 pub type InternBytes = Intern<[u8]>;
 #[cfg(feature = "shared_from_slice2")]
-pub type InternCStr = Intern<CStr>;
-#[cfg(feature = "shared_from_slice2")]
-pub type InternOsStr = Intern<OsStr>;
-#[cfg(feature = "shared_from_slice2")]
-pub type InternPath = Intern<Path>;
+pub use self::shared_from_slice2::*;
 
 /// Interned data
 ///
@@ -108,25 +99,28 @@ pub type InternPath = Intern<Path>;
 pub struct Intern<T>(Rc<T>) where T: AllowIntern + ?Sized;
 
 mod private {
-    pub trait Guard {}
+    pub trait Sealed {}
 }
 
-pub trait AllowIntern: Eq + Hash + ToOwned + private::Guard + 'static {
+/// Common trait of intern-able types
+///
+/// This trait is sealed so you can't implement it on your own type.
+pub trait AllowIntern: Eq + Hash + ToOwned + private::Sealed + 'static {
 
-    /// Provide thread-local interned pool for this type.
+    /// Provide per-thread interned pool for this type.
     ///
     /// This is necessary as Rust doesn't allow static variables with generic type,
     /// as this can't be monomorphized trivially.
     ///
-    /// This function is private as `Intern` relies on assumption that
-    /// provided pool never change except for the construction/destruction of the `Intern`.
+    /// This function is `unsafe` as `Intern<T>` relies on assumption that provided pool
+    /// never be modified except for the construction/destruction of the `Intern<T>`.
     ///
     unsafe fn provide_per_thread_intern_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>>;
 }
 
 impl<T> Intern<T> where T: AllowIntern + ?Sized, for<'a> &'a T: Into<Rc<T>> {
 
-    /// Create new `Intern<T>` from given value if matching cache not found.
+    /// Create new `Intern<T>` from given value, if matching cache is not found.
     ///
     pub fn new(value: &T) -> Self {
         let pool = unsafe {
@@ -148,23 +142,24 @@ impl<T> Intern<T> where T: AllowIntern + ?Sized, for<'a> &'a T: Into<Rc<T>> {
     }
 }
 
-/// Create new `Intern<T>` from given value if matching cache not found.
+/// Create new `Intern<T>` from given value, if matching cache is not found.
 ///
 /// This function is a thin wrapper over `Intern::new()` for convenience.
 ///
+#[inline]
 pub fn intern<T>(value: &T) -> Intern<T> where
     T: AllowIntern + ?Sized,
     for<'a> &'a T: Into<Rc<T>>,
 {
-    Intern::<T>::new(value)
+    Intern::new(value)
 }
 
 impl<'a, T> From<&'a T> for Intern<T> where
     T: AllowIntern + ?Sized,
-    for<'aa> &'aa T: Into<Rc<T>>
+    for<'b> &'b T: Into<Rc<T>>
 {
     fn from(value: &T) -> Self {
-        Self::new(value)
+        Intern::new(value)
     }
 }
 
@@ -191,8 +186,7 @@ impl<T> Drop for Intern<T> where T: AllowIntern + ?Sized {
     }
 }
 
-impl<T> PartialEq<Self> for Intern<T> where
-    T: AllowIntern + ?Sized {
+impl<T> PartialEq<Self> for Intern<T> where T: AllowIntern + ?Sized {
     fn eq(&self, other: &Self) -> bool {
         Rc::ptr_eq(&self.0, &other.0)
     }
@@ -218,64 +212,37 @@ impl<T> fmt::Display for Intern<T> where T: AllowIntern + ?Sized + fmt::Display 
     }
 }
 
-/// Provide a interned pool so your custom type can be interned.
-///
-/// # Example
-///
-/// ```
-/// #[macro_use]
-/// extern crate internship;
-///
-/// use internship::intern;
-///
-/// #[derive(Clone, Hash, PartialEq, Eq)] // required
-/// struct CustomData(u32, bool);
-///
-/// allow_intern!(CustomData);
-///
-/// // Now you can use `Intern<CustomData>`
-/// # fn main() {
-/// let _ = intern(CustomData(3, true));
-/// # }
-/// ```
 macro_rules! allow_intern {
-    ($T:ty) => (
-        impl private::Guard for $T {}
+    ($($T:ty),*) => ($(
+        impl private::Sealed for $T {}
         impl AllowIntern for $T {
-            unsafe fn provide_per_thread_intern_pool() ->
-                &'static ::std::thread::LocalKey<
-                        ::std::cell::RefCell<
-                            ::std::collections::HashSet<
-                                ::std::rc::Rc<$T>
-                            >
-                        >
-                    >
+            unsafe fn provide_per_thread_intern_pool()
+                -> &'static LocalKey<RefCell<HashSet<Rc<$T>>>>
             {
                 thread_local! {
-                    static POOL: (
-                        ::std::cell::RefCell<
-                            ::std::collections::HashSet<
-                                ::std::rc::Rc<$T>
-                            >
-                        >
-                    ) = Default::default();
+                    static POOL: RefCell<HashSet<Rc<$T>>> = Default::default();
                 }
 
                 &POOL
             }
         }
-    );
+    )*);
 }
 
-allow_intern!{str}
-allow_intern!{[u8]}
+allow_intern!{str, [u8]}
 
 #[cfg(feature = "shared_from_slice2")]
-allow_intern!{CStr}
-#[cfg(feature = "shared_from_slice2")]
-allow_intern!{OsStr}
-#[cfg(feature = "shared_from_slice2")]
-allow_intern!{Path}
+mod shared_from_slice2 {
+    use super::*;
+    use std::ffi::{CStr, OsStr};
+    use std::path::Path;
+
+    allow_intern!{CStr, OsStr, Path}
+
+    pub type InternCStr = Intern<CStr>;
+    pub type InternOsStr = Intern<OsStr>;
+    pub type InternPath = Intern<Path>;
+}
 
 #[cfg(feature = "serde-compat")]
 mod serde_support;
