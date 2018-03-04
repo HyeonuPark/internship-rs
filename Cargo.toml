@@ -1,6 +1,6 @@
 [package]
 name = "internship"
-version = "0.3.0"
+version = "0.3.1"
 authors = ["Hyeonu Park <nemo1275@gmail.com>"]
 
 description = "Interned string and more"
