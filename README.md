@@ -1,6 +1,10 @@
 Internship
 ===========
 
+[![Docs.rs](https://docs.rs/internship/badge.svg)](https://docs.rs/internship)
+[![Build Status](https://travis-ci.org/HyeonuPark/internship-rs.svg?branch=master)](https://travis-ci.org/HyeonuPark/internship-rs)
+[![codecov](https://codecov.io/gh/HyeonuPark/internship-rs/branch/master/graph/badge.svg)](https://codecov.io/gh/HyeonuPark/internship-rs)
+
 Interned string and more for rust.
 
 # What is interning?

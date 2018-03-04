@@ -20,3 +20,11 @@ shared_from_slice2 = []
 [dependencies.serde]
 version = "1.0"
 optional = true
+
+[badges.travis-ci]
+repository = "HyeonuPark/internship-rs"
+branch = "master"
+
+[badges.codecov]
+repository = "HyeonuPark/internship-rs"
+branch = "master"
