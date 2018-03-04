@@ -256,4 +256,44 @@ mod tests {
         assert_eq!(intern("foo"), Intern::new("foo"));
         assert_eq!(&*Intern::new("bar"), "bar");
     }
+
+    #[test]
+    fn test_pool_and_rc_count() {
+        use std::mem::replace;
+
+        let prev_pool = unsafe {
+            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
+                replace(&mut *pool.borrow_mut(), Default::default())
+            })
+        };
+
+        let pool_size = || unsafe {
+            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
+                pool.borrow().len()
+            })
+        };
+
+        assert_eq!(pool_size(), 0);
+        let b1 = intern(&b"foo"[..]);
+        assert_eq!(pool_size(), 1);
+        assert_eq!(Rc::strong_count(&b1.0), 2);
+        let b2 = intern(&b"bar"[..]);
+        assert_eq!(pool_size(), 2);
+        let b3 = intern(&b"foo"[..]);
+        assert_eq!(pool_size(), 2);
+        assert_eq!(Rc::strong_count(&b1.0), 3);
+        drop(b2);
+        assert_eq!(pool_size(), 1);
+        drop(b1);
+        assert_eq!(pool_size(), 1);
+        assert_eq!(Rc::strong_count(&b3.0), 2);
+        drop(b3);
+        assert_eq!(pool_size(), 0);
+
+        unsafe {
+            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
+                replace(&mut *pool.borrow_mut(), prev_pool);
+            })
+        }
+    }
 }
