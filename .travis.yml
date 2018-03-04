@@ -6,8 +6,6 @@ os:
 
 rust:
   - stable
-  - beta
-  - nightly
 
 script:
   - cargo build --all
