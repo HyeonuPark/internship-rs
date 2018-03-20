@@ -8,16 +8,17 @@ use std::fmt;
 
 use self::serde::{Serialize, Deserialize, Serializer, Deserializer};
 use self::serde::de::{Visitor, Error};
-use super::{Intern, AllowIntern};
+use super::Intern;
+use super::private::IntoIntern;
 
-impl<T> Serialize for Intern<T> where T: AllowIntern + ?Sized + Serialize {
+impl<T> Serialize for Intern<T> where T: IntoIntern + ?Sized + Serialize {
     fn serialize<S: Serializer>(&self, ser: S) -> Result<S::Ok, S::Error> {
         (&**self).serialize(ser)
     }
 }
 
 impl<'de, T> Deserialize<'de> for Intern<T> where
-    T: AllowIntern + ToOwned,
+    T: IntoIntern + ToOwned,
     for<'a> &'a T: Into<Rc<T>>,
     <T as ToOwned>::Owned: Deserialize<'de> + Into<Rc<T>> + Hash + Eq,
 {

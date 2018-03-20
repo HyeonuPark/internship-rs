@@ -1,4 +1,4 @@
-//! Interned string and more for rust.
+//! Interned string and bytes for rust.
 //!
 //! # What is interning?
 //!
@@ -16,250 +16,206 @@
 //!
 //! # What does this library provide?
 //!
-//! The core of the API is `Intern<T>` where `T` is `str`-like types in `std`.
-//! You can think of it as `Rc<T>`, but guaranteed uniqueness over value within thread.
+//! This crate exposes `Intern<T>` type correspond to `Rc<T>`
+//! but guaranteed to be unique over its value within thread
+//! and provide fast O(1) comparison and hashing.
 //!
 //! # Example
 //!
 //!   ```
 //!   # extern crate internship;
 //!   # use std::collections::HashMap;
-//!   use internship::{Intern, intern};
+//!   use internship::IStr;
 //!
 //!   # fn main() {
-//!   let foo = intern("foo"); // type is Intern<str>
-//!   let foo2 = intern("foo"); // reuse foo's buffer
+//!   let foo = IStr::new("foo"); // type is IStr
+//!   let foo2 = IStr::new("foo"); // reuse foo's buffer
 //!
 //!   let mut map = HashMap::new();
-//!   map.insert(intern("key"), 42);
-//!   assert_eq!(map.get(&intern("key")), Some(&42));
+//!   map.insert(IStr::new("key"), 42);
+//!   assert_eq!(map.get(&IStr::new("key")), Some(&42));
 //!   # }
 //!   ```
 //!
-//! # How is `Intern<T>` better then `Rc<T>`?
+//! # Why should I use `IStr` over `Rc<str>`?
 //!
-//! `Intern<T>` has some advantages over `Rc<T>`
+//! `IStr` has some advantages over `Rc<str>`
 //!
 //! 1. Space efficient
 //!
 //!   As only single allocation is happen per unique value,
-//!   you can even span `intern()` without worrying about memory bloat.
+//!   you can even spam `IStr::new()` without worrying about memory bloat.
 //!
-//! 1. Cheap equality check
+//! 1. O(1) equality check
 //!
 //!   As only one copy of unique value can be exist,
-//!   comparing two `Intern<T>` can be done with just single pointer comparison
-//!   instead comparing every bytes of strings.
+//!   comparing two `IStr` can be done with just single pointer comparison
+//!   instead comparing entire contents of strings.
 //!
-//! 1. Cheap hash calculation
+//! 1. O(1) hash calculation
 //!
 //!   Again, as only one copy of unique value can be exist,
 //!   its allocated memory address can represent underlying value
-//!   so calculating hash over its pointer makes perfect sense to hash `Intern<T>`.
+//!   so calculating hash over its pointer makes perfect sense to hash `IStr`.
 //!   Now you can perform blazingly-fast hashmap lookup with arbitrary string key!
-//!
-//! # What types can be interned?
-//!
-//! Currently these types are supported.
-//!
-//! - `str`
-//! - `[u8]`
-//! - `CStr`
-//! - `OsStr`
-//! - `Path`
-//!
-//! You can find interned type of them as re-export, like `InternStr`.
-//!
-//! > For now, only `str` and `[u8]` are supported by default.
-//! > This limitation should be removed after docs.rs update their rustc from v1.22.0
-//! > I think it's more important to show proper docs on docs.rs
-//! > than make this feature works out of the box.
-//! > If you want to use others at now, turn on cargo feature "shared_from_slice2".
 //!
 
 use std::rc::Rc;
-use std::hash::{Hash, Hasher};
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::borrow::Borrow;
-use std::thread::LocalKey;
-use std::ops::{Deref, Drop};
-use std::fmt;
+use std::ffi::{CStr, OsStr};
+use std::path::Path;
 
-pub type InternStr = Intern<str>;
-pub type InternBytes = Intern<[u8]>;
-#[cfg(feature = "shared_from_slice2")]
-pub use self::shared_from_slice2::*;
+pub type IStr = Intern<str>;
+pub type IBytes = Intern<[u8]>;
+pub type ICStr = Intern<CStr>;
+pub type IOsStr = Intern<OsStr>;
+pub type IPath = Intern<Path>;
 
 /// Interned data
 ///
 /// `Intern<T>` is conceptually same as `Rc<T>` but unique over its value within thread.
 ///
-#[derive(Debug, Eq, PartialOrd, Ord, Default)]
-pub struct Intern<T>(Rc<T>) where T: AllowIntern + ?Sized;
+#[derive(Debug, PartialOrd, Ord, Default)]
+pub struct Intern<T>(Rc<T>) where T: private::IntoIntern + ?Sized;
 
 mod private {
-    pub trait Sealed {}
-}
-
-/// Common trait of intern-able types
-///
-/// This trait is sealed so you can't implement it on your own type.
-pub trait AllowIntern: Eq + Hash + ToOwned + private::Sealed + 'static {
-
-    /// Provide per-thread interned pool for this type.
-    ///
-    /// This is necessary as Rust doesn't allow static variables with generic type,
-    /// as this can't be monomorphized trivially.
-    ///
-    /// This function is `unsafe` as `Intern<T>` relies on assumption that provided pool
-    /// never be modified except for the construction/destruction of the `Intern<T>`.
-    ///
-    unsafe fn provide_per_thread_intern_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>>;
-}
-
-impl<T> Intern<T> where T: AllowIntern + ?Sized, for<'a> &'a T: Into<Rc<T>> {
-
-    /// Create new `Intern<T>` from given value, if matching cache is not found.
-    ///
-    #[inline]
-    pub fn new(value: &T) -> Self {
-        Intern::new_impl(value)
-    }
-
-    /// Create new `Intern<T>` from given value, reuse `Rc<T>` if possible.
-    #[inline]
-    pub fn from_rc(value: Rc<T>) -> Self {
-        Intern::new_impl(value)
-    }
-
-    fn new_impl<U: Into<Rc<T>> + Borrow<T>>(value: U) -> Self {
-        let pool = unsafe {
-            T::provide_per_thread_intern_pool()
-        };
-        pool.with(|pool| {
-            let mut pool = pool.borrow_mut();
-            let cached = pool.get(value.borrow()).cloned();
-
-            match cached {
-                Some(v) => Intern(v),
-                None => {
-                    let v = value.into();
-                    pool.insert(Rc::clone(&v));
-                    Intern(v)
-                }
-            }
-        })
-    }
-}
-
-/// Create new `Intern<T>` from given value, if matching cache is not found.
-///
-/// This function is a thin wrapper over `Intern::new()` for convenience.
-///
-#[inline]
-pub fn intern<T>(value: &T) -> Intern<T> where
-    T: AllowIntern + ?Sized,
-    for<'a> &'a T: Into<Rc<T>>,
-{
-    Intern::new(value)
-}
-
-impl<T, U> From<U> for Intern<T> where
-    T: AllowIntern + ?Sized,
-    for<'a> &'a T: Into<Rc<T>>,
-    U: Into<Rc<T>> + Borrow<T>,
-{
-    fn from(value: U) -> Self {
-        Intern::new_impl(value)
-    }
-}
-
-impl<T> Clone for Intern<T> where T: AllowIntern + ?Sized {
-    fn clone(&self) -> Self {
-        Intern(self.0.clone())
-    }
-}
-
-impl<T> Deref for Intern<T> where T: AllowIntern + ?Sized {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &*self.0
-    }
-}
-
-impl<T> Drop for Intern<T> where T: AllowIntern + ?Sized {
-    fn drop(&mut self) {
-        // strong count == 2 means no other copies of this interned value exist
-        // other then the `self` which will be dropped and the one in the pool,
-        // so it's not really being used.
-        //
-        if Rc::strong_count(&self.0) == 2 {
-            let pool = unsafe {
-                T::provide_per_thread_intern_pool()
-            };
-            pool.with(|pool| pool.borrow_mut().remove(&self.0));
-        }
-    }
-}
-
-impl<T> PartialEq<Self> for Intern<T> where T: AllowIntern + ?Sized {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl<T> Hash for Intern<T> where T: AllowIntern + ?Sized {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        let ptr = Rc::into_raw(Rc::clone(&self.0));
-        unsafe { Rc::from_raw(ptr) };
-        ptr.hash(hasher)
-    }
-}
-
-impl<T> AsRef<T> for Intern<T> where T: AllowIntern + ?Sized {
-    fn as_ref(&self) -> &T {
-        &*self.0
-    }
-}
-
-impl<T> fmt::Display for Intern<T> where T: AllowIntern + ?Sized + fmt::Display {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.as_ref().fmt(f)
-    }
-}
-
-macro_rules! allow_intern {
-    ($($T:ty),*) => ($(
-        impl private::Sealed for $T {}
-        impl AllowIntern for $T {
-            unsafe fn provide_per_thread_intern_pool()
-                -> &'static LocalKey<RefCell<HashSet<Rc<$T>>>>
-            {
-                thread_local! {
-                    static POOL: RefCell<HashSet<Rc<$T>>> = Default::default();
-                }
-
-                &POOL
-            }
-        }
-    )*);
-}
-
-allow_intern!{str, [u8]}
-
-#[cfg(feature = "shared_from_slice2")]
-mod shared_from_slice2 {
     use super::*;
-    use std::ffi::{CStr, OsStr};
-    use std::path::Path;
+    use std::hash::{Hash, Hasher};
+    use std::cell::RefCell;
+    use std::collections::HashSet;
+    use std::thread::LocalKey;
+    use std::ops::{Deref, Drop};
+    use std::fmt;
+    use std::path::PathBuf;
+    use std::ffi::{CString, OsString};
 
-    allow_intern!{CStr, OsStr, Path}
+    pub trait IntoIntern: Eq + Hash + 'static {
+        fn provide_intern_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>>;
+        fn to_rc(&self) -> Rc<Self>;
+    }
 
-    pub type InternCStr = Intern<CStr>;
-    pub type InternOsStr = Intern<OsStr>;
-    pub type InternPath = Intern<Path>;
+    macro_rules! impl_intern {
+        ($($T:ty),*) => ($(
+            impl IntoIntern for $T {
+                fn provide_intern_pool() -> &'static LocalKey<RefCell<HashSet<Rc<Self>>>> {
+                    thread_local! {
+                        static POOL: RefCell<HashSet<Rc<$T>>> = Default::default();
+                    }
+                    &POOL
+                }
+
+                fn to_rc(&self) -> Rc<Self> {
+                    self.into()
+                }
+            }
+        )*);
+    }
+
+    impl_intern!(str, [u8], CStr, OsStr, Path);
+
+    impl<T: IntoIntern + ?Sized> Intern<T> {
+        /// Create new `Intern<T>` from given value, if matching cache is not found.
+        pub fn new(value: &T) -> Self {
+            T::provide_intern_pool().with(|pool| {
+                let mut pool = pool.borrow_mut();
+                let cached = pool.get(value).cloned();
+
+                match cached {
+                    Some(v) => Intern(v),
+                    None => {
+                        let v = value.to_rc();
+                        pool.insert(Rc::clone(&v));
+                        Intern(v)
+                    }
+                }
+            })
+        }
+    }
+
+    impl<'a, T: IntoIntern + ?Sized> From<&'a T> for Intern<T> {
+        fn from(v: &'a T) -> Self {
+            Intern::new(v)
+        }
+    }
+
+    macro_rules! impl_from_owned {
+        ($($T:ty : $Owned:ty),*) => ($(
+            impl From<$Owned> for Intern<$T> {
+                fn from(v: $Owned) -> Self {
+                    Intern::new(&v)
+                }
+            }
+        )*);
+    }
+
+    impl_from_owned!(str:String, [u8]:Vec<u8>, CStr:CString, OsStr:OsString, Path:PathBuf);
+
+    impl<T: IntoIntern + ?Sized> Clone for Intern<T> {
+        fn clone(&self) -> Self {
+            Intern(self.0.clone())
+        }
+    }
+
+    impl<T: IntoIntern + ?Sized> Deref for Intern<T> {
+        type Target = T;
+
+        fn deref(&self) -> &T {
+            &*self.0
+        }
+    }
+
+    impl<T: IntoIntern + ?Sized> Drop for Intern<T> {
+        fn drop(&mut self) {
+            // strong count == 2 means no other copies of this interned value exist
+            // other then the `self` which will be dropped and the one in the pool,
+            // so it's not really being used.
+            //
+            if Rc::strong_count(&self.0) == 2 {
+                T::provide_intern_pool().with(|pool| {
+                    pool.borrow_mut().remove(&self.0)
+                });
+            }
+        }
+    }
+
+    impl<T: IntoIntern + ?Sized> PartialEq for Intern<T> {
+        fn eq(&self, other: &Self) -> bool {
+            Rc::ptr_eq(&self.0, &other.0)
+        }
+    }
+
+    impl<T: IntoIntern + ?Sized> Eq for Intern<T> {}
+
+    impl<T: IntoIntern + ?Sized> Hash for Intern<T> {
+        fn hash<H: Hasher>(&self, hasher: &mut H) {
+            let ptr = Rc::into_raw(Rc::clone(&self.0));
+            unsafe { Rc::from_raw(ptr) };
+            ptr.hash(hasher)
+        }
+    }
+
+    impl<T: IntoIntern + ?Sized> AsRef<T> for Intern<T> {
+        fn as_ref(&self) -> &T {
+            &*self.0
+        }
+    }
+
+    macro_rules! impl_fmt {
+        ($($Trait:ident),*) => ($(
+            impl<T: IntoIntern + ?Sized + fmt::$Trait> fmt::$Trait for Intern<T> {
+                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                    self.0.fmt(f)
+                }
+            }
+        )*);
+    }
+
+    impl_fmt!(Binary, Display, LowerExp, LowerHex, Octal, UpperExp, UpperHex);
+
+    impl<T: IntoIntern + ?Sized> fmt::Pointer for Intern<T> {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            self.0.fmt(f)
+        }
+    }
 }
 
 // more trait impl for `Intern<str>`
@@ -271,10 +227,11 @@ mod serde_support;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::private::IntoIntern;
 
     #[test]
     fn test_eq_check() {
-        assert_eq!(intern("foo"), Intern::new("foo"));
+        assert_eq!(IStr::new("foo"), IStr::new("foo"));
         assert_eq!(&*Intern::new("bar"), "bar");
     }
 
@@ -282,25 +239,21 @@ mod tests {
     fn test_pool_and_rc_count() {
         use std::mem::replace;
 
-        let prev_pool = unsafe {
-            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
-                replace(&mut *pool.borrow_mut(), Default::default())
-            })
-        };
+        let prev_pool = <[u8]>::provide_intern_pool().with(|pool| {
+            replace(&mut *pool.borrow_mut(), Default::default())
+        });
 
-        let pool_size = || unsafe {
-            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
-                pool.borrow().len()
-            })
-        };
+        let pool_size = || <[u8]>::provide_intern_pool().with(|pool| {
+            pool.borrow().len()
+        });
 
         assert_eq!(pool_size(), 0);
-        let b1 = intern(&b"foo"[..]);
+        let b1 = IBytes::new(&b"foo"[..]);
         assert_eq!(pool_size(), 1);
         assert_eq!(Rc::strong_count(&b1.0), 2);
-        let b2 = intern(&b"bar"[..]);
+        let b2 = IBytes::new(&b"bar"[..]);
         assert_eq!(pool_size(), 2);
-        let b3 = intern(&b"foo"[..]);
+        let b3 = IBytes::new(&b"foo"[..]);
         assert_eq!(pool_size(), 2);
         assert_eq!(Rc::strong_count(&b1.0), 3);
         let b4 = Intern::clone(&b3);
@@ -314,10 +267,8 @@ mod tests {
         drop(b3);
         assert_eq!(pool_size(), 0);
 
-        unsafe {
-            <[u8]>::provide_per_thread_intern_pool().with(|pool| {
-                replace(&mut *pool.borrow_mut(), prev_pool);
-            })
-        }
+        <[u8]>::provide_intern_pool().with(|pool| {
+            replace(&mut *pool.borrow_mut(), prev_pool);
+        })
     }
 }

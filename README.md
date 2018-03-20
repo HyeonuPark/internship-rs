@@ -23,8 +23,34 @@ If not, just create a new one and put them also to the pool.
 
 # What does this library provide?
 
-The core of the API is `Intern<T>`. You can think of it as `Rc<T>`,
-but guaranteed uniqueness over its value within thread.
+This crate exposes `IStr` type correspond to `Rc<str>`
+but guaranteed to be unique over its value within thread
+and provide fast O(1) comparison and hashing.
+
+You can also find `IBytes`, `ICStr`, `IOsStr` and `IPath` in this crate,
+each correspond to `Rc` of `[u8]`, `CStr`, `OsStr`, and `Path` respectively.
+
+# Why should I use `IStr` over `Rc<str>`?
+
+`IStr` has some advantages over `Rc<str>`
+
+1. Space efficient
+
+  As only single allocation is happen per unique value,
+  you can even spam `IStr::new()` without worrying about memory bloat.
+
+1. Cheap equality check
+
+  As only one copy of unique value can be exist,
+  comparing two `IStr` can be done with just single pointer comparison
+  instead comparing entire contents of strings.
+
+1. Cheap hash calculation
+
+  Again, as only one copy of unique value can be exist,
+  its allocated memory address can represent underlying value
+  so calculating hash over its pointer makes perfect sense to hash `IStr`.
+  Now you can perform blazingly-fast hash map lookup with arbitrary string key!
 
 # License
 
