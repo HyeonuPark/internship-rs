@@ -12,6 +12,9 @@ use handle::Handle;
 /// Interned string type
 ///
 /// `IStr` is designed for drop-in-replacement of immutable `String`.
+///
+/// Conceptually, `IStr` is similar to `Rc<str>` as both are immutable and zero-copy shareable.
+/// But `IStr` is interned, and inlined if small enough.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IStr(Handle);
 

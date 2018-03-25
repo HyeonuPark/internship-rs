@@ -21,10 +21,13 @@ When you need a new owned string, first you should lookup global pool for it.
 If desired string is found then use it.
 If not, just create a new one and put them also to the pool.
 
+Or, you can just use `internship` and ignore all the hassle. Why not?
+
 # What does this library provide?
 
 This crate exposes `IStr` type correspond to `Rc<str>`
 but guaranteed to be unique over its value within thread.
+Every instance of `IStr` are per-thread cached to archive this goal.
 
 Additionally, `IStr` does not heap-allocate small strings that can be fit on
 stack, typically up to 15 bytes on 64bit machine.
