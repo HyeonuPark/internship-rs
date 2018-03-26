@@ -18,8 +18,6 @@ use handle::Handle;
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct IStr(Handle);
 
-// TODO: impl serde::{Serialize, Deserialize}
-
 impl IStr {
     pub fn new(src: &str) -> Self {
         IStr(Handle::new(src.as_bytes()))
@@ -29,6 +27,10 @@ impl IStr {
         unsafe {
             str::from_utf8_unchecked(self.0.get())
         }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.get()
     }
 }
 
@@ -110,7 +112,7 @@ impl Index<Range<usize>> for IStr {
     type Output = str;
 
     fn index(&self, index: Range<usize>) -> &str {
-        Index::index(self.as_str(), index)
+        &self.as_str()[index]
     }
 }
 
@@ -118,7 +120,7 @@ impl Index<RangeFrom<usize>> for IStr {
     type Output = str;
 
     fn index(&self, index: RangeFrom<usize>) -> &str {
-        Index::index(self.as_str(), index)
+        &self.as_str()[index]
     }
 }
 
@@ -126,15 +128,15 @@ impl Index<RangeTo<usize>> for IStr {
     type Output = str;
 
     fn index(&self, index: RangeTo<usize>) -> &str {
-        Index::index(self.as_str(), index)
+        &self.as_str()[index]
     }
 }
 
 impl Index<RangeFull> for IStr {
     type Output = str;
 
-    fn index(&self, _index: RangeFull) -> &str {
-        self.as_str()
+    fn index(&self, index: RangeFull) -> &str {
+        &self.as_str()[index]
     }
 }
 
@@ -154,7 +156,7 @@ impl AsRef<str> for IStr {
 
 impl AsRef<[u8]> for IStr {
     fn as_ref(&self) -> &[u8] {
-        self.0.get()
+        self.as_bytes()
     }
 }
 
@@ -175,5 +177,37 @@ impl ToSocketAddrs for IStr {
 
     fn to_socket_addrs(&self) -> ::std::io::Result<Self::Iter> {
         ToSocketAddrs::to_socket_addrs(self.as_str())
+    }
+}
+
+#[cfg(feature = "serde-compat")]
+mod serde_compat {
+    use super::*;
+    use serde::{Serialize, Serializer, Deserialize, Deserializer, de};
+
+    impl Serialize for IStr {
+        fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+            Serialize::serialize(self.as_str(), s)
+        }
+    }
+
+    impl<'d> Deserialize<'d> for IStr {
+        fn deserialize<D: Deserializer<'d>>(d: D) -> Result<IStr, D::Error> {
+            d.deserialize_str(Visitor)
+        }
+    }
+
+    pub struct Visitor;
+
+    impl<'d> de::Visitor<'d> for Visitor {
+        type Value = IStr;
+
+        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            f.write_str("string slice")
+        }
+
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<IStr, E> {
+            Ok(IStr::new(value))
+        }
     }
 }

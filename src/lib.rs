@@ -26,6 +26,9 @@
 //! stack. Size limit of inlined string is `2 * sizeof ptr - 1`, typically 15 byte
 //! on 64bit machine.
 
+#[cfg(feature = "serde-compat")]
+extern crate serde;
+
 mod handle;
 mod istr;
 mod ibytes;
@@ -34,5 +37,6 @@ mod iosstr;
 mod ipath;
 
 pub use istr::IStr;
+pub use ibytes::IBytes;
 
 // TODO: implement other types

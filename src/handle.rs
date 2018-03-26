@@ -18,7 +18,7 @@ use std::fmt;
 #[cfg(target_endian = "little")]
 #[repr(C)]
 #[derive(PartialEq, Eq, Ord)]
-pub(crate) struct Handle {
+pub struct Handle {
     // TODO: use std::ptr::NotNull when stabilized
     ptr: *const u8,
     len: usize,
@@ -27,7 +27,7 @@ pub(crate) struct Handle {
 #[cfg(target_endian = "big")]
 #[repr(C)]
 #[derive(PartialEq, Eq, Ord)]
-pub(crate) struct Handle {
+pub struct Handle {
     len: usize,
     // TODO: use std::ptr::NotNull when stabilized
     ptr: *const u8,
