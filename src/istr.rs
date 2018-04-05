@@ -8,6 +8,7 @@ use std::fmt;
 use std::net::ToSocketAddrs;
 
 use handle::Handle;
+use ibytes::IBytes;
 
 /// Interned string type
 ///
@@ -16,7 +17,7 @@ use handle::Handle;
 /// Conceptually, `IStr` is similar to `Rc<str>` as both are immutable and zero-copy shareable.
 /// But `IStr` is interned, and inlined if small enough.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct IStr(Handle);
+pub struct IStr(pub(crate) Handle);
 
 impl IStr {
     #[inline]
@@ -34,6 +35,11 @@ impl IStr {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.get()
+    }
+
+    #[inline]
+    pub fn to_ibytes(&self) -> IBytes {
+        IBytes(self.0.clone())
     }
 }
 

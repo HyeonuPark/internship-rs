@@ -3,14 +3,16 @@ use std::cmp::{PartialEq};
 use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
 use std::fmt;
+use std::str::{from_utf8, Utf8Error};
 
 use handle::Handle;
+use istr::IStr;
 
 /// Interned byte string type
 ///
 /// `IBytes` is like `IStr`, but for arbitrary byte string.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct IBytes(Handle);
+pub struct IBytes(pub(crate) Handle);
 
 impl IBytes {
     #[inline]
@@ -21,6 +23,11 @@ impl IBytes {
     #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.get()
+    }
+
+    #[inline]
+    pub fn to_istr(&self) -> Result<IStr, Utf8Error> {
+        from_utf8(self).map(|_| IStr(self.0.clone()))
     }
 }
 

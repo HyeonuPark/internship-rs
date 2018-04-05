@@ -2,11 +2,14 @@ use std::ffi::{CStr, CString};
 use std::ops::{Deref, Index, RangeFull};
 use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
+use std::str::{from_utf8, Utf8Error};
 
 use handle::Handle;
+use ibytes::IBytes;
+use istr::IStr;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ICStr(Handle);
+pub struct ICStr(pub(crate) Handle);
 
 impl ICStr {
     #[inline]
@@ -31,6 +34,16 @@ impl ICStr {
     #[inline]
     pub fn as_bytes_with_nul(&self) -> &[u8] {
         self.0.get()
+    }
+
+    #[inline]
+    pub fn to_ibytes_with_nul(&self) -> IBytes {
+        IBytes(self.0.clone())
+    }
+
+    #[inline]
+    pub fn to_istr(&self) -> Result<IStr, Utf8Error> {
+        from_utf8(self.as_bytes()).map(|_| IStr(self.0.clone()))
     }
 }
 
