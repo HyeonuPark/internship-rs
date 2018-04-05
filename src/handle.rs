@@ -14,13 +14,13 @@ use std::slice;
 use std::ops::Drop;
 use std::cmp::{PartialOrd, Ordering};
 use std::fmt;
+use std::ptr::NonNull;
 
 #[cfg(target_endian = "little")]
 #[repr(C)]
 #[derive(PartialEq, Eq, Ord)]
 pub struct Handle {
-    // TODO: use std::ptr::NotNull when stabilized
-    ptr: *const u8,
+    ptr: NonNull<u8>,
     len: usize,
 }
 
@@ -29,8 +29,7 @@ pub struct Handle {
 #[derive(PartialEq, Eq, Ord)]
 pub struct Handle {
     len: usize,
-    // TODO: use std::ptr::NotNull when stabilized
-    ptr: *const u8,
+    ptr: NonNull<u8>,
 }
 
 const INLINE_MASK: usize = 1;
@@ -80,16 +79,16 @@ impl Handle {
         });
 
         let len = rc.len();
-        let ptr = rc.as_ptr();
+        let ptr = NonNull::new(rc.as_ptr() as *mut u8).unwrap();
 
         let rc_ptr = Rc::into_raw(rc);
-        debug_assert_eq!(rc_ptr as *const u8, ptr,
+        debug_assert_eq!(rc_ptr as *const u8, ptr.as_ptr(),
             "slice ptr does not match with ptr from Rc::into_raw");
         // At the time this code is written, RcBox (heap-allocated part of Rc) contains
         // 2 usize fields to store strong/weak ref counter, which makes it to aligned for them.
         // This is not guaranteed by spec though, It's very unlikely to change to be unaligned.
-        debug_assert_eq!(ptr as usize & INLINE_MASK, INLINE_FALSE,
-            "It seems like Rc ptr is not alligned with at least 2 bytes, blame libstd, {:p}", ptr);
+        debug_assert_eq!(ptr.as_ptr() as usize & INLINE_MASK, INLINE_FALSE,
+            "It seems like Rc ptr is not alligned with at least 2 bytes, {:p}", ptr);
 
         Handle { ptr, len }
     }
@@ -113,7 +112,7 @@ impl Handle {
 
     #[inline]
     pub fn is_inline(&self) -> bool {
-        match self.ptr as usize & INLINE_MASK {
+        match self.ptr.as_ptr() as usize & INLINE_MASK {
             INLINE_TRUE => true,
             INLINE_FALSE => false,
             _ => unreachable!(),
@@ -132,7 +131,7 @@ impl Handle {
     #[inline]
     fn get_heap<'a>(&'a self) -> &'a [u8] {
         unsafe {
-            slice::from_raw_parts(self.ptr, self.len)
+            slice::from_raw_parts(self.ptr.as_ptr(), self.len)
         }
     }
 
@@ -149,7 +148,7 @@ impl Handle {
     #[inline]
     fn get_rc(&self) -> mem::ManuallyDrop<Rc<[u8]>> {
         unsafe {
-            let slice_ptr = slice::from_raw_parts(self.ptr, self.len) as *const [u8];
+            let slice_ptr = slice::from_raw_parts(self.ptr.as_ptr(), self.len) as *const [u8];
             mem::ManuallyDrop::new(Rc::from_raw(slice_ptr))
         }
     }
