@@ -19,16 +19,19 @@ use handle::Handle;
 pub struct IStr(Handle);
 
 impl IStr {
+    #[inline]
     pub fn new(src: &str) -> Self {
         IStr(Handle::new(src.as_bytes()))
     }
 
+    #[inline]
     pub fn as_str(&self) -> &str {
         unsafe {
             str::from_utf8_unchecked(self.0.get())
         }
     }
 
+    #[inline]
     pub fn as_bytes(&self) -> &[u8] {
         self.0.get()
     }
@@ -37,60 +40,70 @@ impl IStr {
 impl Deref for IStr {
     type Target = str;
 
+    #[inline]
     fn deref(&self) -> &str {
         self.as_str()
     }
 }
 
 impl From<String> for IStr {
+    #[inline]
     fn from(v: String) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> From<&'a str> for IStr {
+    #[inline]
     fn from(v: &str) -> Self {
         IStr::new(v)
     }
 }
 
 impl From<Box<str>> for IStr {
+    #[inline]
     fn from(v: Box<str>) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> From<Cow<'a, str>> for IStr {
+    #[inline]
     fn from(v: Cow<str>) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> PartialEq<Cow<'a, str>> for IStr {
+    #[inline]
     fn eq(&self, other: &Cow<str>) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
 }
 
 impl PartialEq<String> for IStr {
+    #[inline]
     fn eq(&self, other: &String) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
 }
 
 impl<'a> PartialEq<&'a str> for IStr {
+    #[inline]
     fn eq(&self, other: &&str) -> bool {
         PartialEq::eq(self.as_str(), *other)
     }
 }
 
 impl PartialEq<str> for IStr {
+    #[inline]
     fn eq(&self, other: &str) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
 }
 
 impl Default for IStr {
+    #[inline]
     fn default() -> Self {
         IStr::new("")
     }
@@ -103,6 +116,7 @@ impl Hash for IStr {
 }
 
 impl Borrow<str> for IStr {
+    #[inline]
     fn borrow(&self) -> &str {
         self.as_str()
     }
@@ -111,6 +125,7 @@ impl Borrow<str> for IStr {
 impl Index<Range<usize>> for IStr {
     type Output = str;
 
+    #[inline]
     fn index(&self, index: Range<usize>) -> &str {
         &self.as_str()[index]
     }
@@ -119,6 +134,7 @@ impl Index<Range<usize>> for IStr {
 impl Index<RangeFrom<usize>> for IStr {
     type Output = str;
 
+    #[inline]
     fn index(&self, index: RangeFrom<usize>) -> &str {
         &self.as_str()[index]
     }
@@ -127,6 +143,7 @@ impl Index<RangeFrom<usize>> for IStr {
 impl Index<RangeTo<usize>> for IStr {
     type Output = str;
 
+    #[inline]
     fn index(&self, index: RangeTo<usize>) -> &str {
         &self.as_str()[index]
     }
@@ -135,6 +152,7 @@ impl Index<RangeTo<usize>> for IStr {
 impl Index<RangeFull> for IStr {
     type Output = str;
 
+    #[inline]
     fn index(&self, index: RangeFull) -> &str {
         &self.as_str()[index]
     }
@@ -143,30 +161,35 @@ impl Index<RangeFull> for IStr {
 impl FromStr for IStr {
     type Err = ParseError;
 
+    #[inline]
     fn from_str(src: &str) -> Result<Self, ParseError> {
         Ok(IStr::new(src))
     }
 }
 
 impl AsRef<str> for IStr {
+    #[inline]
     fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
 impl AsRef<[u8]> for IStr {
+    #[inline]
     fn as_ref(&self) -> &[u8] {
         self.as_bytes()
     }
 }
 
 impl fmt::Debug for IStr {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self.as_str(), f)
     }
 }
 
 impl fmt::Display for IStr {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(self.as_str(), f)
     }

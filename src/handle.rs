@@ -55,6 +55,7 @@ thread_local! {
 }
 
 impl Handle {
+    #[inline]
     pub fn new(slice: &[u8]) -> Self {
         if slice.len() > INLINE_MAX_LEN {
             Handle::new_heap(slice)
@@ -63,6 +64,7 @@ impl Handle {
         }
     }
 
+    #[inline]
     fn new_heap(slice: &[u8]) -> Self {
         let rc = POOL.with(|pool| {
             let cached = pool.borrow().get(slice).cloned();
@@ -92,6 +94,7 @@ impl Handle {
         Handle { ptr, len }
     }
 
+    #[inline]
     fn new_inline(slice: &[u8]) -> Self {
         debug_assert!(slice.len() <= INLINE_MAX_LEN, "Size is larger then INLINE_MAX_LEN");
         debug_assert!(slice.len() <= (u8::MAX >> 1) as usize, "What a large, really?");
@@ -108,6 +111,7 @@ impl Handle {
         }
     }
 
+    #[inline]
     pub fn is_inline(&self) -> bool {
         match self.ptr as usize & INLINE_MASK {
             INLINE_TRUE => true,
@@ -116,6 +120,7 @@ impl Handle {
         }
     }
 
+    #[inline]
     pub fn get(&self) -> &[u8] {
         if self.is_inline() {
             self.get_inline()
@@ -124,12 +129,14 @@ impl Handle {
         }
     }
 
+    #[inline]
     fn get_heap<'a>(&'a self) -> &'a [u8] {
         unsafe {
             slice::from_raw_parts(self.ptr, self.len)
         }
     }
 
+    #[inline]
     fn get_inline<'a>(&'a self) -> &'a [u8] {
         let bytes: &'a [u8; INLINE_ARRAY_SIZE] = unsafe {
             mem::transmute(self)
@@ -139,6 +146,7 @@ impl Handle {
         &bytes[INLINE_START..INLINE_START + len]
     }
 
+    #[inline]
     fn get_rc(&self) -> mem::ManuallyDrop<Rc<[u8]>> {
         unsafe {
             let slice_ptr = slice::from_raw_parts(self.ptr, self.len) as *const [u8];
@@ -148,6 +156,7 @@ impl Handle {
 }
 
 impl Drop for Handle {
+    #[inline]
     fn drop(&mut self) {
         if self.is_inline() {
             return;
@@ -168,6 +177,7 @@ impl Drop for Handle {
 }
 
 impl Clone for Handle {
+    #[inline]
     fn clone(&self) -> Self {
         if !self.is_inline() {
             let rc = self.get_rc();
@@ -181,6 +191,7 @@ impl Clone for Handle {
 }
 
 impl PartialOrd for Handle {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         PartialOrd::partial_cmp(self.get(), other.get())
     }
