@@ -33,11 +33,7 @@ mod handle;
 mod istr;
 mod ibytes;
 mod icstr;
-mod iosstr;
-mod ipath;
 
 pub use istr::IStr;
 pub use ibytes::IBytes;
 pub use icstr::ICStr;
-
-// TODO: implement other types
