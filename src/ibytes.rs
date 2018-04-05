@@ -1,12 +1,13 @@
 use std::ops::{Deref, Index, Range, RangeFrom, RangeTo, RangeFull};
 use std::cmp::{PartialEq};
 use std::hash::{Hash, Hasher};
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::fmt;
 use std::str::{from_utf8, Utf8Error};
 
 use handle::Handle;
 use istr::IStr;
+use icstr::ICStr;
 
 /// Interned byte string type
 ///
@@ -15,9 +16,12 @@ use istr::IStr;
 pub struct IBytes(pub(crate) Handle);
 
 impl IBytes {
-    #[inline]
     pub fn new(src: &[u8]) -> Self {
         IBytes(Handle::new(src))
+    }
+
+    pub fn from_str(src: &str) -> Self {
+        IBytes(Handle::new(src.as_bytes()))
     }
 
     #[inline]
@@ -40,9 +44,8 @@ impl Deref for IBytes {
     }
 }
 
-impl From<Vec<u8>> for IBytes {
-    #[inline]
-    fn from(v: Vec<u8>) -> Self {
+impl<'a> From<Cow<'a, [u8]>> for IBytes {
+    fn from(v: Cow<[u8]>) -> Self {
         IBytes::new(&v)
     }
 }
@@ -54,29 +57,61 @@ impl<'a> From<&'a [u8]> for IBytes {
     }
 }
 
+impl<'a> From<&'a mut [u8]> for IBytes {
+    fn from(v: &mut [u8]) -> Self {
+        IBytes::new(&v)
+    }
+}
+
+impl From<Vec<u8>> for IBytes {
+    fn from(v: Vec<u8>) -> Self {
+        IBytes::new(&v)
+    }
+}
+
 impl From<Box<[u8]>> for IBytes {
-    #[inline]
     fn from(v: Box<[u8]>) -> Self {
         IBytes::new(&v)
     }
 }
 
+impl From<String> for IBytes {
+    fn from(v: String) -> Self {
+        IBytes::new(v.as_bytes())
+    }
+}
+
+impl<'a> From<&'a str> for IBytes {
+    fn from(v: &str) -> Self {
+        IBytes::new(v.as_bytes())
+    }
+}
+
+impl From<IStr> for IBytes {
+    fn from(v: IStr) -> Self {
+        v.to_ibytes()
+    }
+}
+
+impl From<ICStr> for IBytes {
+    fn from(v: ICStr) -> Self {
+        v.to_ibytes_with_nul()
+    }
+}
+
 impl PartialEq<Vec<u8>> for IBytes {
-    #[inline]
     fn eq(&self, other: &Vec<u8>) -> bool {
         PartialEq::eq(self.as_bytes(), &**other)
     }
 }
 
 impl<'a> PartialEq<&'a [u8]> for IBytes {
-    #[inline]
     fn eq(&self, other: &&[u8]) -> bool {
         PartialEq::eq(self.as_bytes(), *other)
     }
 }
 
 impl PartialEq<[u8]> for IBytes {
-    #[inline]
     fn eq(&self, other: &[u8]) -> bool {
         PartialEq::eq(self.as_bytes(), other)
     }
@@ -90,7 +125,6 @@ impl Default for IBytes {
 }
 
 impl Hash for IBytes {
-    #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         Hash::hash(self.as_bytes(), hasher)
     }
@@ -178,7 +212,6 @@ mod serde_compat {
             f.write_str("byte slice")
         }
 
-        #[inline]
         fn visit_bytes<E: de::Error>(self, value: &[u8]) -> Result<IBytes, E> {
             Ok(IBytes::new(value))
         }

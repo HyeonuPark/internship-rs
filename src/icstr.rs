@@ -1,4 +1,4 @@
-use std::ffi::{CStr, CString};
+use std::ffi::{CStr, CString, FromBytesWithNulError};
 use std::ops::{Deref, Index, RangeFull};
 use std::hash::{Hash, Hasher};
 use std::borrow::Borrow;
@@ -12,9 +12,12 @@ use istr::IStr;
 pub struct ICStr(pub(crate) Handle);
 
 impl ICStr {
-    #[inline]
     pub fn new(src: &CStr) -> Self {
         ICStr(Handle::new(src.to_bytes_with_nul()))
+    }
+
+    pub fn from_bytes_with_nul(src: &[u8]) -> Result<Self, FromBytesWithNulError> {
+        CStr::from_bytes_with_nul(src).map(ICStr::new)
     }
 
     #[inline]
@@ -57,21 +60,18 @@ impl Deref for ICStr {
 }
 
 impl From<CString> for ICStr {
-    #[inline]
     fn from(v: CString) -> Self {
         ICStr::new(&v)
     }
 }
 
 impl<'a> From<&'a CStr> for ICStr {
-    #[inline]
     fn from(v: &'a CStr) -> Self {
         ICStr::new(v)
     }
 }
 
 impl From<Box<CStr>> for ICStr {
-    #[inline]
     fn from(v: Box<CStr>) -> Self {
         ICStr::new(&v)
     }
@@ -85,7 +85,6 @@ impl Default for ICStr {
 }
 
 impl Hash for ICStr {
-    #[inline]
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         self.as_cstr().hash(hasher)
     }

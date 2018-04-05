@@ -3,7 +3,7 @@ use std::borrow::{Cow, Borrow};
 use std::string::ParseError;
 use std::cmp::PartialEq;
 use std::hash::{Hash, Hasher};
-use std::str::{self, FromStr};
+use std::str::{self, FromStr, from_utf8, Utf8Error};
 use std::fmt;
 use std::net::ToSocketAddrs;
 
@@ -20,9 +20,12 @@ use ibytes::IBytes;
 pub struct IStr(pub(crate) Handle);
 
 impl IStr {
-    #[inline]
     pub fn new(src: &str) -> Self {
         IStr(Handle::new(src.as_bytes()))
+    }
+
+    pub fn from_utf8(src: &[u8]) -> Result<Self, Utf8Error> {
+        from_utf8(src).map(IStr::new)
     }
 
     #[inline]
@@ -53,56 +56,48 @@ impl Deref for IStr {
 }
 
 impl From<String> for IStr {
-    #[inline]
     fn from(v: String) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> From<&'a str> for IStr {
-    #[inline]
     fn from(v: &str) -> Self {
         IStr::new(v)
     }
 }
 
 impl From<Box<str>> for IStr {
-    #[inline]
     fn from(v: Box<str>) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> From<Cow<'a, str>> for IStr {
-    #[inline]
     fn from(v: Cow<str>) -> Self {
         IStr::new(&v)
     }
 }
 
 impl<'a> PartialEq<Cow<'a, str>> for IStr {
-    #[inline]
     fn eq(&self, other: &Cow<str>) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
 }
 
 impl PartialEq<String> for IStr {
-    #[inline]
     fn eq(&self, other: &String) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
 }
 
 impl<'a> PartialEq<&'a str> for IStr {
-    #[inline]
     fn eq(&self, other: &&str) -> bool {
         PartialEq::eq(self.as_str(), *other)
     }
 }
 
 impl PartialEq<str> for IStr {
-    #[inline]
     fn eq(&self, other: &str) -> bool {
         PartialEq::eq(self.as_str(), other)
     }
@@ -167,7 +162,6 @@ impl Index<RangeFull> for IStr {
 impl FromStr for IStr {
     type Err = ParseError;
 
-    #[inline]
     fn from_str(src: &str) -> Result<Self, ParseError> {
         Ok(IStr::new(src))
     }
@@ -188,14 +182,12 @@ impl AsRef<[u8]> for IStr {
 }
 
 impl fmt::Debug for IStr {
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self.as_str(), f)
     }
 }
 
 impl fmt::Display for IStr {
-    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Display::fmt(self.as_str(), f)
     }
