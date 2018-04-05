@@ -25,12 +25,14 @@ Or, you can just use `internship` and ignore all the hassle. Why not?
 
 # What does this library provide?
 
-This crate exposes `IStr` type correspond to `Rc<str>`
+This crate exposes a set of interned types which correspond to `Rc`
 but guaranteed to be unique over its value within thread.
-Every instance of `IStr` are per-thread cached to archive this goal.
+Instances of them are per-thread cached to archive this goal.
 
-Additionally, `IStr` does not heap-allocate small strings that can be fit on
-stack, typically up to 15 bytes on 64bit machine.
+Additionally, these types does not heap-allocate small data that can be fit on stack.
+Size limit of inline-able data is 15 bytes on 64-byte machines.
+
+`IStr`, `IBytes`, and `ICStr` correspond to `str`, `[u8]`, and `CStr` respectively.
 
 # License
 
